@@ -1,9 +1,13 @@
+from django.db import transaction
+
+from exceptions import NotEnoughMoney
 from .models import AccountUser
 from .forms import TransferForm
 from django.contrib.auth.models import User
 from django.views.generic.edit import FormView
 
 
+@transaction.atomic  # Cancel all db operations in case of error during view execution.
 class TransferView(FormView):
     
     form_class = TransferForm
@@ -16,45 +20,30 @@ class TransferView(FormView):
         return self.render_to_response(ctx)
 
     def post(self, request, *args, **kwargs):
-        
         ctx = self.get_context_data(**kwargs)
-        amount = float(request.POST['amount'])
-
-        user_from = User.objects.get(id=request.POST['user_from'])
-        
-        # ищем сумму на счёте пользователя
-        us = user_from.users_set.all()
-
-        if us:
-            acc_sum = us[0].account
-
-            inn_to = AccountUser.objects.filter(inn=request.POST['inn_to'])
-
-            if inn_to and acc_sum >= amount:
-                
-                users_count = len(inn_to)
-                sum_part = round(amount / users_count, 2)
-
-                # со счёта донора списать всю сумму
-                res_user = user_from.users_set.get()
-                result_sum = float(res_user.account) - sum_part * users_count
-                res_user.account = result_sum
-                res_user.save()
-
-                # на счёт каждого записать по части
-                for i in inn_to:
-                    result_sum = float(i.account) + sum_part
-                    i.account = result_sum
-                    i.save()
-
-                ctx['op_result'] = [acc_sum, users_count, sum_part]
-            else:
-                ctx['op_result'] = 'перевод не выполнен'
-
-        else:
-            ctx['op_result'] = 'На счёте недостаточно средств'
-
         ctx['userlist'] = self.userlist()
+        amount = request.POST['amount']
+
+        # Find target users using their tax_ids
+        target_users = AccountUser.objects.filter(inn=request.POST['inn_to'])
+
+        if target_users.exists():
+            user = AccountUser.objects.select_related('accounts', 'user').get(id=request.POST['user_from'])
+            user_account = user.accounts.filter(amount_gte=amount).first()
+
+            # Withdraw money or return error if there's not enough
+            try:
+                user_account.withdraw(amount=amount)
+            except NotEnoughMoney:
+                ctx['op_result'] = 'На счёте недостаточно средств'
+                return self.render_to_response(ctx)
+
+            # Top up target users' accounts
+            top_up_amount = amount / target_users.count()
+            for target_user in target_users:
+                target_user.top_up(top_up_amount=top_up_amount)
+        else:
+            ctx['op_result'] = 'Перевод не выполнен, не найдены реципиенты.'
 
         return self.render_to_response(ctx)
 

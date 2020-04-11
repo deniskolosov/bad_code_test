@@ -28,7 +28,7 @@ class TransferView(FormView):
         target_users = AccountUser.objects.filter(inn=request.POST['inn_to'])
 
         if target_users.exists():
-            user = AccountUser.objects.select_related('accounts', 'user').get(id=request.POST['user_from'])
+            user = AccountUser.objects.select_related('user').get(id=request.POST['user_from'])
             user_account = user.accounts.filter(amount_gte=amount).first()
 
             # Withdraw money or return error if there's not enough
@@ -48,14 +48,9 @@ class TransferView(FormView):
         return self.render_to_response(ctx)
 
     def userlist(self):
-        user_list = []
-        for i in AccountUser.objects.all():
-            cur_user = {}
-            cur_user['id'] = i.id
-            cur_user['username'] = i.username
-            if i.users_set.all():
-                tmp = i.users_set.get()
-                cur_user['inn'] = tmp.inn
-                cur_user['account'] = tmp.account
-            user_list.append(cur_user)
+        user_list = [
+            {'id': user.user.id,
+             'username': user.user.username,
+             'inn': user.inn,
+             'accounts': user.accounts} for user in AccountUser.objects.select_related('user').all()]
         return user_list

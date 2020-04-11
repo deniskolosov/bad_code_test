@@ -1,4 +1,4 @@
-from .models import Users
+from .models import AccountUser
 from .forms import TransferForm
 from django.contrib.auth.models import User
 from django.views.generic.edit import FormView
@@ -28,7 +28,7 @@ class TransferView(FormView):
         if us:
             acc_sum = us[0].account
 
-            inn_to = Users.objects.filter(inn=request.POST['inn_to'])
+            inn_to = AccountUser.objects.filter(inn=request.POST['inn_to'])
 
             if inn_to and acc_sum >= amount:
                 

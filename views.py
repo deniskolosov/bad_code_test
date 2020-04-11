@@ -49,7 +49,7 @@ class TransferView(FormView):
 
     def userlist(self):
         user_list = []
-        for i in User.objects.all():
+        for i in AccountUser.objects.all():
             cur_user = {}
             cur_user['id'] = i.id
             cur_user['username'] = i.username
